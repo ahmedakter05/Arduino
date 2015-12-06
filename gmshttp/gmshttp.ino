@@ -3,19 +3,23 @@
 #define BUFFSIZ 90
 char buffer[BUFFSIZ];
 char buffidx;
-char aa='ahmed';
+char incoming_txt= 0;
 int retry = 5;
 int value;
 int dLine[30];
 int sendCommand(char* command, char* resp, int delayTime=500, int reps=5, int numData=2);
 boolean config = false;
 boolean power = false;
-SoftwareSerial mySerial(7, 8);
+SoftwareSerial mySerial(15, 14); //rxtx
+
 void setup()
 {
  mySerial.begin(19200); // the GPRS baud rate 
  Serial.begin(19200); // the GPRS baud rate 
- delay(500);
+ mySerial.print("AT+CMGF=1\r");
+ delay(200);
+ mySerial.print("AT+CNMI=2,2,0,0,0\r");
+ delay(300);
 }
 
 void loop()
@@ -36,14 +40,27 @@ void loop()
  DialVoiceCall();
  break;
  case 's':
- SubmitHttpRequestwv();
+ SendTextMessage();
  break;
  case 'h':
- SubmitHttpRequest();
+ postData();
+ break;
+ case 'n':
+ powerOn();
+ break;
+ case 'f':
+ powerOff();
  break;
  } 
+ 
  if (mySerial.available())
  Serial.write(mySerial.read());
+
+ if(mySerial.available() > 0)
+  {
+    incoming_txt=mySerial.read(); //Get the character from the cellular serial port.
+    Serial.print(incoming_txt); //Print the incoming character to the terminal.
+  }
 }
 
 ///SendTextMessage()
@@ -52,10 +69,10 @@ void SendTextMessage()
 {
  mySerial.print("AT+CMGF=1\r"); //Because we want to send the SMS in text mode
  delay(100);
- mySerial.println("AT + CMGS = \"+8801715009721\"");//send sms message, 
+ mySerial.println("AT + CMGS = \"+8801712203145\"");//send sms message, 
  //be careful need to add a country code before the cellphone number
  delay(100);
- mySerial.println("A test message from AA!");//the content of the message
+ mySerial.println("aa");//the content of the message
  delay(100);
  mySerial.println((char)26);//the ASCII code of the ctrl+z is 26
  delay(100);
@@ -74,100 +91,68 @@ void DialVoiceCall()
 ///SubmitHttpRequest()
 ///this function is submit a http request
 ///attention:the time of delay is very important, it must be set enough 
-void SubmitHttpRequest()
+void postData()
 {
- powerOn();
- mySerial.println("AT+CSQ");
- delay(100);
- ShowSerialData();// this code is to show the data from gprs shield, 
- //in order to easily see the process of
- //how the gprs shield submit a http request, and the following is for this purpose too.
- mySerial.println("AT+CGATT?");
- delay(100);
- ShowSerialData();
- mySerial.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");//setting the SAPBR, the connection 
- //type is using gprs
- delay(1000);
- ShowSerialData();
- mySerial.println("AT+SAPBR=3,1,\"APN\",\"blweb\"");//setting the APN, 
- //the second need you fill in your local apn server
- delay(4000);
- ShowSerialData();
- mySerial.println("AT+SAPBR=1,1");//setting the SAPBR, for detail you can refer to 
- //the AT command mamual
- delay(2000);
- ShowSerialData();
- mySerial.println("AT+HTTPINIT"); //init the HTTP request
- delay(2000); 
- ShowSerialData();
- mySerial.println("AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?query=aawtv\"");// setting the httppara,
- Serial.print("id=" + aa);
- //the second parameter is the website you want to access
- delay(1000);
- ShowSerialData();
- mySerial.println("AT+HTTPACTION=0");//submit the request 
- delay(4000);//the delay is very important, the delay time is base on the return from the website, 
- //if the return datas are very large, the time required longer.
- //while(!mySerial.available());
- ShowSerialData();
- //mySerial.println("AT+HTTPREAD");// read the data from the website you access
- delay(300);
-// ShowSerialData();
- checkForResponse();
- mySerial.println("");
- delay(100);
- mySerial.println("AT+HTTPTERM");// read the data from the website you access
- delay(300);
- ShowSerialData();
- //powerOff();
+  mySerial.println("AT+CSQ");
+  delay(1000);
+ 
+  ShowSerialData();// this code is to show the data from gprs shield, in order to easily see the process of how the gprs shield submit a http request, and the following is for this purpose too.
+ 
+  mySerial.println("AT+CGATT?");
+  delay(1000);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");//setting the SAPBR, the connection type is using gprs
+  delay(4000);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("AT+SAPBR=3,1,\"APN\",\"blweb\"");//setting the APN, the second need you fill in your local apn server
+  delay(4000);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("AT+SAPBR=1,1");//setting the SAPBR, for detail you can refer to the AT command mamual
+  delay(4000);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("AT+HTTPINIT"); //init the HTTP request
+ 
+  delay(8000); 
+  ShowSerialData();
+  char *aa = "ahmed12abs";
+  char aa_val[160]; 
+   sprintf(aa_val,"%s", aa);
+   //Serial.println(sl_val);
+   String url = "AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?";
+   url.concat("query=");
+   url.concat(String(aa_val));
+   url.concat("\"");
+  //mySerial.println("AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?query=aa\"");// setting the httppara, the second parameter is the website you want to access
+  mySerial.println(url);
+  delay(4000);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("AT+HTTPACTION=0");//submit the request 
+  delay(10000);//the delay is very important, the delay time is base on the return from the website, if the return datas are very large, the time required longer.
+  //while(!mySerial.available());
+ 
+  ShowSerialData();
+
+  mySerial.println("AT+HTTPTERM");
+ 
+  //mySerial.println("AT+HTTPREAD");// read the data from the website you access
+  delay(300);
+ 
+  ShowSerialData();
+ 
+  mySerial.println("");
+  delay(100);
 }
 
-void SubmitHttpRequestwv()
-{
- powerOn();
- mySerial.println("AT+CSQ");
- delay(100);
- ShowSerialData();// this code is to show the data from gprs shield, 
- //in order to easily see the process of
- //how the gprs shield submit a http request, and the following is for this purpose too.
- mySerial.println("AT+CGATT?");
- delay(100);
- ShowSerialData();
- mySerial.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");//setting the SAPBR, the connection 
- //type is using gprs
- delay(1000);
- ShowSerialData();
- mySerial.println("AT+SAPBR=3,1,\"APN\",\"blweb\"");//setting the APN, 
- //the second need you fill in your local apn server
- delay(4000);
- ShowSerialData();
- mySerial.println("AT+SAPBR=1,1");//setting the SAPBR, for detail you can refer to 
- //the AT command mamual
- delay(2000);
- ShowSerialData();
- mySerial.println("AT+HTTPINIT"); //init the HTTP request
- delay(2000); 
- ShowSerialData();
- mySerial.println("AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?query=aawv\"");// setting the httppara,
- //the second parameter is the website you want to access
- delay(1000);
- ShowSerialData();
- mySerial.println("AT+HTTPACTION=0");//submit the request 
- delay(8000);//the delay is very important, the delay time is base on the return from the website, 
- //if the return datas are very large, the time required longer.
- while(!mySerial.available());
- ShowSerialData();
- mySerial.println("AT+HTTPREAD");// read the data from the website you access
- delay(300);
- ShowSerialData();
- checkForResponse();
- mySerial.println("");
- delay(100);
- mySerial.println("AT+HTTPTERM");// read the data from the website you access
- delay(300);
- ShowSerialData();
- //powerOff();
-}
 void ShowSerialData()
 {
  while(mySerial.available()!=0)
@@ -195,12 +180,12 @@ void checkForResponse(){ //this part for text parsing and processing. get 101010
 void powerOn(){
  if(sendCommand("AT","OK",500,1) !=1){
  Serial.println("Powering On...");
- pinMode(9, OUTPUT); 
- digitalWrite(9,LOW);
+ pinMode(40, OUTPUT); 
+ digitalWrite(40,LOW);
  delay(1000);
- digitalWrite(9,HIGH);
+ digitalWrite(40,HIGH);
  delay(2000);
- digitalWrite(9,LOW);
+ digitalWrite(40,LOW);
  delay(10000);
  //delay(15500);
  if(sendCommand("AT+CREG?","+CREG: 0,1",500,10,10)==1){
@@ -217,12 +202,12 @@ void powerOn(){
 }
 void powerOff(){
  delay(1000);
- pinMode(9, OUTPUT); 
- digitalWrite(9,LOW);
+ pinMode(40, OUTPUT); 
+ digitalWrite(40,LOW);
  delay(1000);
- digitalWrite(9,HIGH);
+ digitalWrite(40,HIGH);
  delay(2500);
- digitalWrite(9,LOW);
+ digitalWrite(40,LOW);
  power = false;
  //delay(10500);
 }

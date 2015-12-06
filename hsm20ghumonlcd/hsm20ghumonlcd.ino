@@ -6,6 +6,7 @@ float humidity;
 void setup(void) {
   Serial.begin(9600);
   lcd.begin(16, 2);
+  lcd.print("Hell");
 }
 
 void loop(void) {

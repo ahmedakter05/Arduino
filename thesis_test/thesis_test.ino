@@ -10,11 +10,23 @@
 
 #define DS3231_I2C_ADDRESS 0x68
 #define onewiretempIPin 10
+#define BUFFSIZ 90
 
+char buffer[BUFFSIZ];
+char buffidx;
+char incoming_txt= 0;
+int retry = 5;
+int value;
+int dLine[30];
+int sendCommand(char* command, char* resp, int delayTime=500, int reps=5, int numData=2);
+boolean config = false;
+boolean power = false;
+
+float tmp= 32;
 
 Servo servo1;
 Servo servo2;
-SoftwareSerial gsmSerial(7, 8);
+SoftwareSerial gsmSerial(15, 14);
 OneWire oneWire(onewiretempIPin);
 Temperature ds18b20(&oneWire);
 //33o35y36r37g38a39b
@@ -56,7 +68,7 @@ void setup(void) {
   gsmSerial.begin(19200); 
   Wire.begin();      
   Serial.begin(19200); 
-  //lcd.begin(16, 2);
+  lcd.begin(20, 4);
   servo1.attach(servo1OPin);
   servo1.write(0);
   servo2.attach(servo2OPin);
@@ -66,10 +78,9 @@ void setup(void) {
   pinMode(motorOPin, OUTPUT);
   pinMode(uvOPin, OUTPUT);
   pinMode(lightnorOPin, OUTPUT);
-  setDS3231time(30,13,15,4,2,12,15);
-
-   lcd.begin(20, 4);
-  delay(1000);
+  setDS3231time(30,13,16,5,3,12,15);
+  
+   delay(1000);
 }
 
 void loop(void) {
@@ -92,19 +103,17 @@ void loop(void) {
     case 'n':
     relayControlOff(motorOPin);
     break;
-    case 'p':
-    postData();
+    case 'y':
+    //SendTextMessage(tmp);
     break;
     } 
+
+    if (gsmSerial.available())
+    Serial.write(gsmSerial.read());
     
     displayTime();
 
-    lcd.setCursor(0,0);
-    lcd.print("Light: ");
-    lcd.setCursor(7,0);
-    lcd.print("73");
-    lcd.setCursor(8,1);
-    lcd.print(" Flux");
+    
     
     humIdity(humidity);
     Serial.print("Humidity: ");
@@ -180,6 +189,8 @@ void loop(void) {
     Serial.print("light: ");
     Serial.println(lightcount);
 
+    
+
 
 
     
@@ -199,10 +210,10 @@ void loop(void) {
       
 
       //humidity control
-      if (humidity < 50 ){
+      if (humidity < 60 ){
         relayControlOn(fanOPin);
         servoOpen();
-      } else if (humidity > 50 ) {
+      } else if (humidity > 60 ) {
         relayControlOff(fanOPin);
         servoClose();
       }
@@ -288,6 +299,18 @@ void loop(void) {
     } else {
       //stop the system & ring the Alarm
     }
+
+    if (tmp == 32){
+      String type = "Hourly Report";
+      float temp, hum, phlev, lightc, waterlev;
+      temp = temperature;
+      hum = humidity;
+      phlev = 12;
+      lightc = light; 
+      waterlev = soilmoist;
+      SendTextMessage(temp, hum, phlev, lightc, waterlev);
+      tmp = tmp + 44;
+    }
 }
 
 void humIdity(float &humidity){
@@ -297,6 +320,13 @@ void humIdity(float &humidity){
     //Serial.print("Humidity: ");
     //Serial.print(humidity);
     //Serial.println(" %");
+
+    lcd.setCursor(0,0);
+    lcd.print("Humidity:");
+    lcd.setCursor(10,0);
+    lcd.print(humidity);
+    lcd.setCursor(15,0);
+    lcd.print(" %");
 }
 
 void soilMoist(float &soilmoist){
@@ -320,6 +350,13 @@ void lightInt(float &light){
     //Serial.print("Humidity: ");
     //Serial.print(humidity);
     //Serial.println(" %");
+
+    lcd.setCursor(0,1);
+    lcd.print("Light:");
+    lcd.setCursor(7,1);
+    lcd.print(light);
+    lcd.setCursor(12,1);
+    lcd.print(" Lumens");
 }
 
 void tempVal(float &temperature){
@@ -330,6 +367,13 @@ void tempVal(float &temperature){
     //Serial.print("Humidity: ");
     //Serial.print(humidity);
     //Serial.println(" %");
+
+    lcd.setCursor(0,2);
+    lcd.print("Temp:");
+    lcd.setCursor(6,2);
+    lcd.print(temperature);
+    lcd.setCursor(12,2);
+    lcd.print(" C");
 }
 
 void phLevel(float &phlevel){
@@ -370,6 +414,14 @@ void waterLev(float &waterlevel){
     //Serial.println(level60pVolt);
     //Serial.println(level90pVolt);
     //float waterlevel = 50;
+
+    lcd.setCursor(0,3);
+    lcd.print("Water Lev:");
+    lcd.setCursor(11,3);
+    lcd.print(waterlevel);
+    lcd.setCursor(14,3);
+    lcd.print(" %");
+        
 }
 
 void servoOpen(){
@@ -395,19 +447,71 @@ void relayControlOff(int &relayPin)
   digitalWrite(relayPin, LOW);
 }
 
-void SendMessage()
+void SendMessage(float &temperature, float &humidity, float &ph, float &lighthour, float &waterlevel)
 {
+
+    String data = "Green House Embedded Seedbed System Status: ";
+    
+    data.concat(String("type"));
+    data.concat(". Current Temperature: ");
+    data.concat(String(temperature));
+    data.concat(" C, Humidity: ");
+    data.concat(String(humidity));
+    data.concat(" %, PH Level: ");
+    data.concat(String(ph));
+    data.concat(" , Light Hours: ");
+    data.concat(String(lighthour));
+    data.concat(" hr & Water Level: ");
+    data.concat(String(waterlevel));
+    
+    data.concat(" %. Good Day");
     gsmSerial.print("AT+CMGF=1\r");    //Because we want to send the SMS in text mode
     delay(100);
     gsmSerial.println("AT + CMGS = \"+8801712203145\""); //send sms message, be careful need to add a country code before the cellphone number
     delay(100);
-    gsmSerial.println("data");//the content of the message
+    gsmSerial.println(data);//the content of the message
     delay(100);
     gsmSerial.println((char)26);//the ASCII code of the ctrl+z is 26
     delay(100);
     gsmSerial.println();
 
     ShowSerialData();
+}
+
+void SendTextMessage(float &temp, float &hum, float &phlev, float &lightc, float &waterlev)
+{
+
+  String data = "Seedbed System Status: ";
+    
+    data.concat("Current Temperature: ");
+    data.concat(temp);
+    data.concat(" C. Humidity: ");
+    data.concat(hum);
+    data.concat(" %. Light: ");
+    data.concat(lightc);
+    data.concat(" L. WaterLev: ");
+    data.concat(waterlev);
+    data.concat(" %. End ");
+    
+ gsmSerial.print("AT+CMGF=1\r"); //Because we want to send the SMS in text mode
+ delay(100);
+ gsmSerial.println("AT + CMGS = \"+8801712203145\"");//send sms message, 
+ //be careful need to add a country code before the cellphone number
+ delay(100);
+ gsmSerial.println(data);//the content of the message
+ delay(100);
+ gsmSerial.println((char)26);//the ASCII code of the ctrl+z is 26
+ delay(100);
+ gsmSerial.println();
+}
+
+///DialVoiceCall
+///this function is to dial a voice call
+void DialVoiceCall()
+{
+ gsmSerial.println("ATD + +8801712203145;");//dial the number
+ delay(100);
+ gsmSerial.println();
 }
 
 void postData()
@@ -487,13 +591,7 @@ dayOfMonth, byte month, byte year)
   Wire.write(decToBcd(year)); // set year (0 to 99)
   Wire.endTransmission();
 }
-void readDS3231time(byte *second,
-byte *minute,
-byte *hour,
-byte *dayOfWeek,
-byte *dayOfMonth,
-byte *month,
-byte *year)
+void readDS3231time(byte *second, byte *minute, byte *hour, byte *dayOfWeek, byte *dayOfMonth, byte *month, byte *year)
 {
   Wire.beginTransmission(DS3231_I2C_ADDRESS);
   Wire.write(0); // set DS3231 register pointer to 00h
@@ -577,3 +675,132 @@ byte bcdToDec(byte val)
   return( (val/16*10) + (val%16) );
 }
 
+void checkForResponse(){ //this part for text parsing and processing. get 10101010 from
+// the website and parse it.
+ while(gsmSerial.available()!=0){
+ for (int i = 0; i < 22; i++){
+ dLine[i] = gsmSerial.read();
+ }
+ }
+ Serial.print(dLine[6]);
+ Serial.print(dLine[7]);
+ Serial.print(dLine[8]);
+ Serial.print(dLine[9]);
+ Serial.print(dLine[10]);
+ Serial.print(dLine[11]);
+ Serial.print(dLine[12]);
+ Serial.print(dLine[13]);
+ value= (dLine[6]-48)*128+(dLine[7]-48)*64+(dLine[8]-48)*32+(dLine[9]-48)*16+(dLine[10]-48)*8+(dLine[11]-48)*4+(dLine[12]-48)*2+(dLine[13]-48);
+ // this formula used to get decimal value for arduino shift register.
+ Serial.print(value);
+}
+void powerOn(){
+ if(sendCommand("AT","OK",500,1) !=1){
+ Serial.println("Powering On...");
+ pinMode(40, OUTPUT); 
+ digitalWrite(40,LOW);
+ delay(1000);
+ digitalWrite(40,HIGH);
+ delay(2000);
+ digitalWrite(40,LOW);
+ delay(10000);
+ //delay(15500);
+ if(sendCommand("AT+CREG?","+CREG: 0,1",500,10,10)==1){
+ Serial.println("REGISTERED");
+ Serial.print(".");
+ }
+ power = true;
+// setupCommands();
+ }
+ else{
+ Serial.println("ALREADY ON");
+ power = true;
+ }
+}
+void powerOff(){
+ delay(1000);
+ pinMode(40, OUTPUT); 
+ digitalWrite(40,LOW);
+ delay(1000);
+ digitalWrite(40,HIGH);
+ delay(2500);
+ digitalWrite(40,LOW);
+ power = false;
+ //delay(10500);
+}
+int sendCommand(char* command, char* resp, int delayTime, int reps, int numData){
+ int returnVal;
+ //delay(100);
+ for(int i=0;i<reps;i++){
+ if (i > 0) delay(500);
+ gsmSerial.flush();
+ delay(100);
+ gsmSerial.println(command);
+ delay(100);
+ Serial.print(command);
+ Serial.print(": ");
+ //delay(10);
+ delay(delayTime);
+ // while(gsmSerial.available() < numData+1){
+ // unsigned long currentMillis = millis();
+ // 
+ // if(currentMillis - previousMillis > delayTime) {
+ // Serial.println("TIMEOUT");
+ // break;
+ // }
+ // }
+ long previousMillis = millis();
+ //unsigned long currentMillis;
+ while(gsmSerial.available()) {
+// unsigned long currentMillis = millis();
+// if(currentMillis - previousMillis > delayTime) {
+// Serial.println("TIMEOUT");
+// break;
+// }
+ readline();
+ //Serial.println("AFTER READLINE");
+ if (strncmp(buffer, resp,numData) == 0) {
+ Serial.println(buffer);
+ return 1;
+ }
+ }
+ Serial.print("FAILED");
+ Serial.println(buffer);
+ }
+ return 0;
+}
+void readline() {
+ memset(buffer,0,sizeof(buffer));
+ char c;
+ int i =0;
+ buffidx = 0; // start at begninning
+ //Serial.println("BEFORE READLINE");
+ long previousMillis = millis();
+ while (1) {
+ unsigned long currentMillis = millis();
+ if(currentMillis - previousMillis > 20000) {
+ Serial.println("TIMEOUT");
+ return;
+ }
+ delay(2);
+ c=gsmSerial.read();
+ //Serial.print(buffidx);
+ if (c == -1)
+ continue;
+ if (c == '\n')
+ continue;
+ if ((buffidx == BUFFSIZ-1) || (c == '\r')) {
+ buffer[buffidx] = 0;
+ return;
+ }
+ buffer[buffidx++]= c;
+ delay(2);
+ }
+}
+void setupCommands(){
+ sendCommand("AT&F","OK");
+ sendCommand("ATE0","OK");
+ sendCommand("AT+CLIP=1","OK");
+ sendCommand("AT+CMEE=0","OK");
+ sendCommand("AT+CIPSHUT","SHUT");
+}
