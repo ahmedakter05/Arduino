@@ -22,7 +22,7 @@ int sendCommand(char* command, char* resp, int delayTime=500, int reps=5, int nu
 boolean config = false;
 boolean power = false;
 
-float tmp= 32;
+
 
 Servo servo1;
 Servo servo2;
@@ -57,10 +57,13 @@ float temperature;
 float waterlevel;
 float soilmoist;
 float phlevel;
+float tempsoil;
 int relayPin;
 int lightcount = 0;
 int lightreq = 8*3600;
-
+int hourset = 1;
+int tmp= 1;
+int phtrig = 1;
 int daystart = 1;
 int day;
 
@@ -116,45 +119,23 @@ void loop(void) {
     
     
     humIdity(humidity);
-    Serial.print("Humidity: ");
-    Serial.print(humidity);
-    Serial.println(" %");
-    
-    
     lightInt(light);
-    Serial.print("Light: ");
-    Serial.print(light);
-    Serial.println(" Lumens");
-    
-    
     tempVal(temperature);
-    Serial.print("Temp-Top: ");
-    Serial.print(temperature);
-    Serial.println(" Celcius");
-
-    
     ds18b20.requestTemperatures();
+    tempsoil= ds18b20.getTempCByIndex(0);
+    //ds18b20.requestTemperatures();
     Serial.print("Temp-Soil: ");
     Serial.print(ds18b20.getTempCByIndex(0));
     Serial.println(" Celcius");
-    
     soilMoist(soilmoist);
-    
     waterLev(waterlevel);
-    Serial.print("Water Level: ");
-    Serial.print(waterlevel);
-    Serial.println(" %");
-
     phLevel(phlevel);
-    Serial.print("Ph Level: ");
-    Serial.print(phlevel);
-    Serial.println(" %");
+    
     
     //relayControlOn(uvOPin);
     
-    
-    delay(3000);
 
+    //Read Time
     byte second, minute, hour, dayOfWeek, dayOfMonth, month, year;
     readDS3231time(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
 
@@ -168,7 +149,7 @@ void loop(void) {
     Serial.print("Day: ");
     Serial.println(day);
 
-    //light
+    //light control
     if (hour < 19 && hour > 5){
       if (light > 50){
         lightcount = lightcount+1;
@@ -185,6 +166,15 @@ void loop(void) {
         relayControlOff(uvOPin);
       }
     }
+
+    if (phlevel <! 7 &&  phlevel >! 5 && phtrig == 1){
+        String msg = "Ph Level Critical: ";
+        msg.concat(phlevel);
+        SendErrorMessage(msg);
+        phtrig = 0;
+    }
+
+    
 
     Serial.print("light: ");
     Serial.println(lightcount);
@@ -221,7 +211,7 @@ void loop(void) {
       
       //check waterlevel & control motor
       if (soilmoist > 180 ){
-        //relayControlOn(motorOPin);
+        relayControlOn(motorOPin);
       } else {
         relayControlOff(motorOPin);
       }
@@ -292,34 +282,46 @@ void loop(void) {
         relayControlOn(motorOPin);
       } else {
         relayControlOff(motorOPin);
+        relayControlOff(fanOPin);
+        relayControlOff(lightnorOPin);
+        relayControlOff(uvOPin);
+        
       }
       
       //check ph and notify user
+      relayControlOff(motorOPin);
       
     } else {
       //stop the system & ring the Alarm
     }
-
-    if (tmp == 32){
+    
+    // hourly Notification & Database log
+    if ( hourset == hour || tmp == 1){
       String type = "Hourly Report";
-      float temp, hum, phlev, lightc, waterlev;
+      float temp, hum, phlev, lightc, waterlev, soilm;
       temp = temperature;
       hum = humidity;
-      phlev = 12;
+      phlev = phlevel;
       lightc = light; 
-      waterlev = soilmoist;
-      SendTextMessage(temp, hum, phlev, lightc, waterlev);
-      tmp = tmp + 44;
+      waterlev = waterlevel;
+      soilm = soilmoist;
+      SendTextMessage(temp, hum, phlev, lightc, waterlev, soilm, day);
+      postData(temp, hum, phlev, lightc, waterlev, soilm, day);
+      hourset = hour + 1;
+      tmp = 0;
     }
+
+    delay(1000);
 }
 
 void humIdity(float &humidity){
     float humValue = analogRead(humIPin); 
     float voltage = ((humValue*5.0)/1023.0); 
+    //
     humidity = (3.71*pow(voltage,3))-(20.65*pow(voltage,2))+(64.81*voltage)-27.44;
-    //Serial.print("Humidity: ");
-    //Serial.print(humidity);
-    //Serial.println(" %");
+    Serial.print("Humidity: ");
+    Serial.print(humidity);
+    Serial.println(" %");
 
     lcd.setCursor(0,0);
     lcd.print("Humidity:");
@@ -345,11 +347,11 @@ void soilMoist(float &soilmoist){
 
 void lightInt(float &light){
     float lightValue = analogRead(lightIPin); 
-    //int voltage = ((humValue*5.0)/1023.0); 
-    light = lightValue; //(3.71*pow(voltage,3))-(20.65*pow(voltage,2))+(64.81*voltage)-27.44;
-    //Serial.print("Humidity: ");
-    //Serial.print(humidity);
-    //Serial.println(" %");
+    float voltage = ((lightValue*5.0)/1023.0); //
+    light = -(0.0298*pow(10,5)*pow(voltage,3))+(0.4160*pow(10,5)*pow(voltage,2))-(pow(10,5)*1.0968*voltage)-(0.6357*pow(10,5));
+    Serial.print("Light: ");
+    Serial.print(light);
+    Serial.println(" Lumens");
 
     lcd.setCursor(0,1);
     lcd.print("Light:");
@@ -364,10 +366,11 @@ void tempVal(float &temperature){
     float tempVoltage = ((tempValue*5.0)/1023.0); // convert analog value to voltage
     //equation for temperature
     temperature = (5.26*pow(tempVoltage,3))-(27.34*pow(tempVoltage,2))+(68.87*tempVoltage)-17.81;
-    //Serial.print("Humidity: ");
-    //Serial.print(humidity);
-    //Serial.println(" %");
-
+    
+    Serial.print("Temp-Top: ");
+    Serial.print(temperature);
+    Serial.println(" Celcius");
+    
     lcd.setCursor(0,2);
     lcd.print("Temp:");
     lcd.setCursor(6,2);
@@ -379,11 +382,11 @@ void tempVal(float &temperature){
 void phLevel(float &phlevel){
     float phValue = analogRead(phIPin); 
     float phVoltage = ((phValue*5.0)/1023.0); // convert analog value to voltage
-    //equation for temperature
-    phlevel = phValue; //(5.26*pow(phlevelVoltage,3))-(27.34*pow(tempVoltage,2))+(68.87*tempVoltage)-17.81;
-    //Serial.print("Humidity: ");
-    //Serial.print(humidity);
-    //Serial.println(" %");
+    phlevel = random(6.00, 7.99); //(5.26*pow(phlevelVoltage,3))-(27.34*pow(tempVoltage,2))+(68.87*tempVoltage)-17.81;
+    
+    Serial.print("Ph Level: ");
+    Serial.print(phlevel);
+    Serial.println(" %");
 }
 
 void waterLev(float &waterlevel){
@@ -410,10 +413,9 @@ void waterLev(float &waterlevel){
           waterlevel = 90;
     }
     
-    //Serial.println(level30pVolt);
-    //Serial.println(level60pVolt);
-    //Serial.println(level90pVolt);
-    //float waterlevel = 50;
+    Serial.print("Water Level: ");
+    Serial.print(waterlevel);
+    Serial.println(" %");
 
     lcd.setCursor(0,3);
     lcd.print("Water Lev:");
@@ -447,41 +449,24 @@ void relayControlOff(int &relayPin)
   digitalWrite(relayPin, LOW);
 }
 
-void SendMessage(float &temperature, float &humidity, float &ph, float &lighthour, float &waterlevel)
+void SendErrorMessage(String &msg)
 {
-
-    String data = "Green House Embedded Seedbed System Status: ";
-    
-    data.concat(String("type"));
-    data.concat(". Current Temperature: ");
-    data.concat(String(temperature));
-    data.concat(" C, Humidity: ");
-    data.concat(String(humidity));
-    data.concat(" %, PH Level: ");
-    data.concat(String(ph));
-    data.concat(" , Light Hours: ");
-    data.concat(String(lighthour));
-    data.concat(" hr & Water Level: ");
-    data.concat(String(waterlevel));
-    
-    data.concat(" %. Good Day");
-    gsmSerial.print("AT+CMGF=1\r");    //Because we want to send the SMS in text mode
-    delay(100);
-    gsmSerial.println("AT + CMGS = \"+8801712203145\""); //send sms message, be careful need to add a country code before the cellphone number
-    delay(100);
-    gsmSerial.println(data);//the content of the message
-    delay(100);
-    gsmSerial.println((char)26);//the ASCII code of the ctrl+z is 26
-    delay(100);
-    gsmSerial.println();
-
-    ShowSerialData();
+ gsmSerial.print("AT+CMGF=1\r"); //Because we want to send the SMS in text mode
+ delay(100);
+ gsmSerial.println("AT + CMGS = \"+8801712203145\"");//send sms message, 
+ //be careful need to add a country code before the cellphone number
+ delay(100);
+ gsmSerial.println(msg);//the content of the message
+ delay(100);
+ gsmSerial.println((char)26);//the ASCII code of the ctrl+z is 26
+ delay(100);
+ gsmSerial.println();
 }
 
-void SendTextMessage(float &temp, float &hum, float &phlev, float &lightc, float &waterlev)
+void SendTextMessage(float &temp, float &hum, float &phlev, float &lightc, float &waterlev,float &soilm, int &day)
 {
 
-  String data = "Seedbed System Status: ";
+  String data = "Seedbed System Status: Hourly Report";
     
     data.concat("Current Temperature: ");
     data.concat(temp);
@@ -489,7 +474,9 @@ void SendTextMessage(float &temp, float &hum, float &phlev, float &lightc, float
     data.concat(hum);
     data.concat(" %. Light: ");
     data.concat(lightc);
-    data.concat(" L. WaterLev: ");
+    data.concat(" L. PHLev: ");
+    data.concat(phlev);
+    data.concat(". WaterLev: ");
     data.concat(waterlev);
     data.concat(" %. End ");
     
@@ -514,7 +501,7 @@ void DialVoiceCall()
  gsmSerial.println();
 }
 
-void postData()
+void postData(float &temp, float &hum, float &phlev, float &lightc, float &waterlev,float &soilm, int &day)
 {
   gsmSerial.println("AT+CSQ");
   delay(1000);
@@ -545,14 +532,24 @@ void postData()
  
   delay(8000); 
   ShowSerialData();
-  char *aa = "ahmed12abs";
-  char aa_val[160]; 
-   sprintf(aa_val,"%s", aa);
-   //Serial.println(sl_val);
-   String url = "AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?";
-   url.concat("query=");
-   url.concat(String(aa_val));
-   url.concat("\"");
+   //http://localhost/ci_exquiso/project/sbp?te=25.36&hu=49.21&li=300.21&ph=8.58&sm=186.32&wl=30&d=5 
+   String url = "AT+HTTPPARA=\"URL\",\"www.aapf.tk/base/project/sbp?";
+   url.concat("te=");
+   url.concat(temp);
+   url.concat("&hu=");
+   url.concat(hum);
+   url.concat("&li=");
+   url.concat(lightc);
+   url.concat("&ph=");
+   url.concat(phlev);
+   url.concat("&sm=");
+   url.concat(soilm);
+   url.concat("&wl=");
+   url.concat(waterlev);
+   url.concat("&d=");
+   url.concat(day);
+   
+   
   //gsmSerial.println("AT+HTTPPARA=\"URL\",\"www.aapf.tk/yapps/apps/siteinfo/arduino?query=aa\"");// setting the httppara, the second parameter is the website you want to access
   gsmSerial.println(url);
   delay(4000);
